@@ -1,23 +1,23 @@
 use std::env;
-use std::io::{self, Write};
-use tokio;
+use tokio::io::{self, AsyncWriteExt as _};
 
-use hyper::Client;
+use hyper::{body::HttpBody, Client};
+use hyper_tls::HttpsConnector;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 async fn fetch_url(url: hyper::Uri) -> Result<()> {
-    let client = Client::new();
+    let https = HttpsConnector::new();
+    let client = Client::builder().build::<_, hyper::Body>(https);
 
-    let res = client.get(url).await?;
+    let mut res = client.get(url).await?;
 
     println!("Response: {}", res.status());
     println!("Headers: {:#?}\n", res.headers());
-    let mut body = res.into_body();
 
-    while let Some(next) = body.next().await {
+    while let Some(next) = res.data().await {
         let chunk = next?;
-        io::stdout().write_all(&chunk)?;
+        io::stdout().write_all(&chunk).await?;
     }
 
     println!("\n\nDone!");
@@ -36,10 +36,6 @@ async fn main() -> Result<()> {
     };
 
     let url = url.parse::<hyper::Uri>().unwrap();
-    if url.scheme_part().map(|s| s.as_ref()) != Some("http") {
-        println!("This example only works with 'http' URLs.");
-        return Ok(());
-    }
 
     fetch_url(url).await
 }
